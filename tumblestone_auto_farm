@@ -1,6 +1,3 @@
--- =====================================================================
--- CONFIG
--- =====================================================================
 -- item replant
 local TUMBLESTONE_ITEM = {
 	["cobblemon:tumblestone"] = true,
@@ -10,27 +7,26 @@ local TUMBLESTONE_ITEM = {
 
 -- all growth phases for homing-check
 local TUMBLESTONE_STAGES = {
-    ["cobblemon:small_budding_tumblestone"]			= true,
-    ["cobblemon:medium_budding_tumblestone"]		= true,
-    ["cobblemon:large_budding_tumblestone"]			= true,
-    ["cobblemon:tumblestone_cluster"]				= true,
+	["cobblemon:small_budding_tumblestone"]			= true,
+	["cobblemon:medium_budding_tumblestone"]		= true,
+	["cobblemon:large_budding_tumblestone"]			= true,
+	["cobblemon:tumblestone_cluster"]				= true,
 	["cobblemon:small_budding_black_tumblestone"]	= true,
-    ["cobblemon:medium_budding_black_tumblestone"]	= true,
-    ["cobblemon:large_budding_black_tumblestone"]	= true,
-    ["cobblemon:black_tumblestone_cluster"]			= true,
+	["cobblemon:medium_budding_black_tumblestone"]	= true,
+	["cobblemon:large_budding_black_tumblestone"]	= true,
+	["cobblemon:black_tumblestone_cluster"]			= true,
 	["cobblemon:small_budding_sky_tumblestone"]		= true,
-    ["cobblemon:medium_budding_sky_tumblestone"]	= true,
-    ["cobblemon:large_budding_sky_tumblestone"]		= true,
-    ["cobblemon:sky_tumblestone_cluster"]			= true,
+	["cobblemon:medium_budding_sky_tumblestone"]	= true,
+	["cobblemon:large_budding_sky_tumblestone"]		= true,
+	["cobblemon:sky_tumblestone_cluster"]			= true,
 }
 
--- fullgrown tumblestone
+	-- fullgrown tumblestone
 local TUMBLESTONE_FULLGROWN = {
 	["cobblemon:tumblestone_cluster"] = true,
 	["cobblemon:black_tumblestone_cluster"] = true,
 	["cobblemon:sky_tumblestone_cluster"] = true,
 }
--- =====================================================================
 
 local function selectTumblestone()
     for i = 1, 16 do
