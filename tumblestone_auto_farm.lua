@@ -63,6 +63,7 @@ while not homing do
             turtle.turnLeft()
         end
     else
+		print("not found")
         turtle.turnLeft()
     end
 end
