@@ -21,7 +21,7 @@ local TUMBLESTONE_STAGES = {
 	["cobblemon:sky_tumblestone_cluster"]			= true,
 }
 
-	-- fullgrown tumblestone
+-- fullgrown tumblestone
 local TUMBLESTONE_FULLGROWN = {
 	["cobblemon:tumblestone_cluster"] = true,
 	["cobblemon:black_tumblestone_cluster"] = true,
