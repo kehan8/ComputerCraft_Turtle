@@ -55,9 +55,10 @@ while true do
                     end
                 elseif item.name == "minecraft:wheat_seeds" then
 					if i ~= SEED_BUFFER_SLOT then
-						if not turtle.transferTo(1) then
+						turtle.transferTo(SEED_BUFFER_SLOT)
+						if turtle.getItemCount(i) > 0 then
                         	turtle.dropDown()
-                    	end
+						end
 					end
                 else
                     turtle.dropDown()
