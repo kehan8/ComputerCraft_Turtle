@@ -43,6 +43,7 @@ while true do
     sleep(0.1)
     local chest_is_full = false
 
+	local SEED_BUFFER_SLOT = 2
     for i = 1, 16 do
         if turtle.getItemCount(i) > 0 then
             turtle.select(i)
@@ -53,9 +54,11 @@ while true do
                         chest_is_full = true
                     end
                 elseif item.name == "minecraft:wheat_seeds" then
-                    -- if not turtle.transferTo(1) then
-                    --     turtle.dropDown()
-                    -- end
+					if i ~= SEED_BUFFER_SLOT then
+						if not turtle.transferTo(1) then
+                        	turtle.dropDown()
+                    	end
+					end
                 else
                     turtle.dropDown()
                 end
