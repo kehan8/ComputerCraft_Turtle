@@ -1,3 +1,14 @@
+local function selectSeed()
+	for i = 1, 16 do
+		local item = turtle.getItemDetail(i)
+		if item and item.name == "minecraft:wheat_seeds" then
+			turtle.select(i)
+			return true
+		end
+	end
+	return false
+end
+
 turtle.select(1)
 homing = false
 start = false
@@ -32,7 +43,7 @@ while true do
     sleep(0.1)
     local chest_is_full = false
 
-    for i = 2, 16 do
+    for i = 1, 16 do
         if turtle.getItemCount(i) > 0 then
             turtle.select(i)
             local item = turtle.getItemDetail()
@@ -42,9 +53,9 @@ while true do
                         chest_is_full = true
                     end
                 elseif item.name == "minecraft:wheat_seeds" then
-                    if not turtle.transferTo(1) then
-                        turtle.dropDown()
-                    end
+                    -- if not turtle.transferTo(1) then
+                    --     turtle.dropDown()
+                    -- end
                 else
                     turtle.dropDown()
                 end
@@ -68,7 +79,9 @@ while true do
             if is_block then
                 if blockdata.state.age == 7 then
                     turtle.dig()
-                    turtle.place()
+					if selectSeed() then
+						turtle.place()
+					end
                 end
             end
             turtle.turnRight()
