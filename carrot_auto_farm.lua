@@ -33,22 +33,16 @@
             term.clear()
             term.setCursorPos(1,1)
             print("chest has space - farming")
-            local is_block, blockdata = turtle.inspect()
-            if is_block then
-                    if blockdata.state.age == 7 then
-                        turtle.dig()
-                        turtle.place() 
-                    end
-            end
-            turtle.turnLeft()
-            local is_block, blockdata = turtle.inspect()
 
+            for side = 1, 4 do
+            local is_block, blockdata = turtle.inspect()
             if is_block then
                 if blockdata.state.age == 7 then
                     turtle.dig()
-                    turtle.place() 
+                    turtle.place()
                 end
             end
-            turtle.turnLeft() 
+            turtle.turnRight()
         end
     end
+end
