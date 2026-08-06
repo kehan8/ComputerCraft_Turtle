@@ -15,7 +15,7 @@
                     if item.name == "minecraft:carrot" then
                         if not turtle.dropUp() then
                             chest_is_full = true
-                        end 
+                        end
                     else
                         turtle.dropDown()
                     end

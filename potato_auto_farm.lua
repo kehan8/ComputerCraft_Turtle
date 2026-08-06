@@ -14,7 +14,7 @@ while true do
                 if item.name == "minecraft:potato" then
                     if not turtle.dropUp() then
                         chest_is_full = true
-                    end 
+                    end
                 else
                     turtle.dropDown()
                 end
