@@ -20,14 +20,23 @@ local function inventoryIsFull()
     return true
 end
 
+local function hasInventory(side)
+    local p = peripheral.wrap(side)
+    return p ~= nil and type(p.list) == "function"
+end
+
 local function dumpOverflowBack()
     turtle.turnLeft()
     turtle.turnLeft()
-    for i = 1, 16 do
-        if i ~= SEED_BUFFER_SLOT and turtle.getItemCount(i) > 0 then
-            turtle.select(i)
-            turtle.drop()
+    if hasInventory("front") then
+        for i = 1, 16 do
+            if i ~= SEED_BUFFER_SLOT and turtle.getItemCount(i) > 0 then
+                turtle.select(i)
+                turtle.drop()
+            end
         end
+    else
+        print("warning: geen kist/barrel achter turtle - overflow dump overgeslagen")
     end
     turtle.select(1)
     turtle.turnLeft()
@@ -66,8 +75,10 @@ end
 
 while true do
     sleep(0.1)
-    local chest_above_full = false
-    local chest_below_full = false
+    local top_present = hasInventory("top")
+    local bottom_present = hasInventory("bottom")
+    local chest_above_full = not top_present
+    local chest_below_full = not bottom_present
 
     for i = 1, 16 do
         if turtle.getItemCount(i) > 0 then
@@ -75,20 +86,20 @@ while true do
             local item = turtle.getItemDetail()
             if item then
                 if item.name == "minecraft:wheat" then
-                    if not turtle.dropUp() then
+                    if top_present and not turtle.dropUp() then
                         chest_above_full = true
                     end
                 elseif item.name == "minecraft:wheat_seeds" then
                     if i ~= SEED_BUFFER_SLOT then
                         turtle.transferTo(SEED_BUFFER_SLOT)
                         if turtle.getItemCount(i) > 0 then
-                            if not turtle.dropDown() then
+                            if bottom_present and not turtle.dropDown() then
                                 chest_below_full = true
                             end
                         end
                     end
                 else
-                    if not turtle.dropDown() then
+                    if bottom_present and not turtle.dropDown() then
                         chest_below_full = true
                     end
                 end
