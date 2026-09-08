@@ -36,7 +36,7 @@ local function dumpOverflowBack()
             end
         end
     else
-        print("warning: geen kist/barrel achter turtle - overflow dump overgeslagen")
+        print("warning: no chest/barrel behind turtle - overflow dump skipped")
     end
     turtle.select(1)
     turtle.turnLeft()
