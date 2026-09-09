@@ -20,15 +20,27 @@ local function inventoryIsFull()
     return true
 end
 
-local function hasInventory(side)
-    local p = peripheral.wrap(side)
-    return p ~= nil and type(p.list) == "function"
+local function isContainer(data)
+    return data.name == "minecraft:chest"
+        or data.name == "minecraft:trapped_chest"
+        or data.name == "minecraft:barrel"
 end
 
 local function dumpOverflowBack()
     turtle.turnLeft()
     turtle.turnLeft()
-    if hasInventory("front") then
+
+    local turns = 0
+    local is_block, blockdata = turtle.inspect()
+    local found = is_block and isContainer(blockdata)
+    while not found and turns < 3 do
+        turtle.turnLeft()
+        turns = turns + 1
+        is_block, blockdata = turtle.inspect()
+        found = is_block and isContainer(blockdata)
+    end
+
+    if found then
         for i = 1, 16 do
             if i ~= SEED_BUFFER_SLOT and turtle.getItemCount(i) > 0 then
                 turtle.select(i)
@@ -36,7 +48,11 @@ local function dumpOverflowBack()
             end
         end
     else
-        print("warning: no chest/barrel behind turtle - overflow dump skipped")
+        print("warning: no chest/barrel found around turtle - overflow dump skipped")
+    end
+
+    for _ = 1, turns do
+        turtle.turnRight()
     end
     turtle.select(1)
     turtle.turnLeft()
@@ -75,8 +91,10 @@ end
 
 while true do
     sleep(0.1)
-    local top_present = hasInventory("top")
-    local bottom_present = hasInventory("bottom")
+    local is_top, top_data = turtle.inspectUp()
+    local top_present = is_top and isContainer(top_data)
+    local is_bottom, bottom_data = turtle.inspectDown()
+    local bottom_present = is_bottom and isContainer(bottom_data)
     local chest_above_full = not top_present
     local chest_below_full = not bottom_present
 
