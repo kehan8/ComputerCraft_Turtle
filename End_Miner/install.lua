@@ -36,7 +36,7 @@ end
 
 -- name this device, never overwrites an existing label
 if not os.getComputerLabel() then
-    local defaultLabel = "AdminDoor_" .. os.getComputerID()
+    local defaultLabel = "End_Miner_" .. os.getComputerID()
     print("Name this device? (Enter or SKIP = '" .. defaultLabel .. "')")
     io.write("> ")
     local input = read() or ""
