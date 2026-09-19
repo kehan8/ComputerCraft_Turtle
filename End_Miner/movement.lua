@@ -41,14 +41,12 @@ return function(state, cfg, logging)
     if SKIP_BLOCKS[data.name] then
       return false, "skip", data.name
     end
-    -- NOTE: homing used to also refuse to dig ANYTHING here (see
-    -- state.homingNoDig), on the theory that a home path should already
-    -- be open air. In practice the mining pattern only connects columns
-    -- at y=0/y=-height, so a mid-depth home walk routinely needs to dig
-    -- through ordinary terrain -- exactly like normal mining always has.
-    -- The old monolithic end_miner.lua never distinguished homing from
-    -- mining here, and blocking it stranded the turtle on the first
-    -- un-dug block. Restored to match: SKIP_BLOCKS is still respected,
+    -- No homing/mining distinction here on purpose. The mining pattern
+    -- only connects columns at y=0/y=-height, so a mid-depth home walk
+    -- routinely needs to dig through ordinary terrain -- exactly like
+    -- normal mining always has. The old monolithic end_miner.lua never
+    -- distinguished homing from mining here either: SKIP_BLOCKS is
+    -- respected (returned as "skip" for the caller to detour around),
     -- everything else gets dug through same as always.
 
     local attempts = 0
@@ -227,14 +225,22 @@ return function(state, cfg, logging)
     return nx < bounds.minX or nx > bounds.maxX or nz < bounds.minZ or nz > bounds.maxZ
   end
 
-  -- Used only while homing (state.homingNoDig true): plain forward()
-  -- (which still digs ordinary terrain via safeClear(), same as normal
-  -- mining), never a detour -- a home path needing a detour means `pos`
-  -- itself has drifted from reality (no GPS to check against), so stop
-  -- and log instead of trying to route around it.
+  -- Used for the horizontal legs of the home walk. Routes through
+  -- state.detourStepForward (== detour.lua's stepForward, wired up once
+  -- detour.lua is constructed -- same hook pattern as
+  -- state.tryRefuelBeforeHalt above) so a real obstacle (SKIP_BLOCKS or
+  -- "stuck") blocking the straight-line path home gets swung around
+  -- exactly like any other sideways step during mining, instead of just
+  -- halting on the first one. No bounds passed (unbounded detour) -- the
+  -- home walk must stay free to pass back through a position a
+  -- mining-time detour deliberately left outside the requested footprint
+  -- earlier in the run. Falls back to plain forward() only if detour.lua
+  -- hasn't registered the hook yet (shouldn't happen in normal startup
+  -- order, but keeps this safe rather than erroring).
   local function walkStraight(count, axisLabel)
+    local step = state.detourStepForward or forward
     for _ = 1, count do
-      local moved, reason, name = forward()
+      local moved, reason, name = step()
       if not moved then
         logging.logEvent(string.format("Stuck walking home (%s, at x=%d y=%d z=%d): %s%s",
           axisLabel, pos.x, pos.y, pos.z, tostring(reason), name and (" (" .. name .. ")") or ""))
@@ -244,25 +250,67 @@ return function(state, cfg, logging)
     return true
   end
 
-  -- Walks straight back to (0,0,0)/heading 0. Horizontal (x, then z)
-  -- first, vertical last -- through the guaranteed-clear column at
-  -- x=0,z=0 from the very first row of the run, not a shaft that might
-  -- have a naturally-occurring pillar directly overhead partway along.
+  -- Horizontal (x, then z) leg of a home/resume walk, re-corrected in
+  -- rounds. A detour taken on the X leg only ever side-steps along Z, and
+  -- the Z leg that follows recomputes its step count from wherever Z
+  -- actually ended up -- so that drift self-corrects for free. But a
+  -- detour taken on the Z leg side-steps along X (detour.lua's
+  -- tryDetourSide deliberately never undoes that side-step -- the turtle
+  -- is left wherever forward() actually confirmed it could go), and
+  -- nothing came after the Z leg to notice or fix it. A single X-then-Z
+  -- pass can therefore land off-target by exactly the width of whatever
+  -- got detoured on the Z leg. Loop X->Z->X... like mineArea's
+  -- correctPosition() does for mining columns, with the same
+  -- seen-position cycle check, so a pillar corner can't loop forever.
+  local MAX_HOME_CORRECTION_ROUNDS = 6
+
+  local function walkHorizontal(targetX, targetZ, label)
+    local seen = { [pos.x .. ":" .. pos.z] = true }
+
+    for _ = 1, MAX_HOME_CORRECTION_ROUNDS do
+      if pos.x == targetX and pos.z == targetZ then return true end
+
+      local ok = true
+      if pos.x > targetX then
+        turnTo(2); ok = walkStraight(pos.x - targetX, label .. " x")
+      elseif pos.x < targetX then
+        turnTo(0); ok = walkStraight(targetX - pos.x, label .. " x")
+      end
+      if not ok then return false end
+      if pos.x == targetX and pos.z == targetZ then return true end
+
+      if pos.z > targetZ then
+        turnTo(3); ok = walkStraight(pos.z - targetZ, label .. " z")
+      elseif pos.z < targetZ then
+        turnTo(1); ok = walkStraight(targetZ - pos.z, label .. " z")
+      end
+      if not ok then return false end
+      if pos.x == targetX and pos.z == targetZ then return true end
+
+      local key = pos.x .. ":" .. pos.z
+      if seen[key] then
+        logging.logEvent(string.format(
+          "Home walk (%s) is oscillating near an obstacle corner (back at x=%d z=%d, wanted x=%d z=%d) -- stopping horizontal correction here.",
+          label, pos.x, pos.z, targetX, targetZ))
+        return false
+      end
+      seen[key] = true
+    end
+
+    logging.logEvent(string.format(
+      "Could not fully correct home walk (%s) after %d round(s) (at x=%d z=%d, wanted x=%d z=%d).",
+      label, MAX_HOME_CORRECTION_ROUNDS, pos.x, pos.z, targetX, targetZ))
+    return false
+  end
+
+  -- Walks straight back to (0,0,0)/heading 0. Horizontal first (see
+  -- walkHorizontal() above for why that's a re-corrected loop, not a
+  -- single X-then-Z pass), vertical last -- through the guaranteed-clear
+  -- column at x=0,z=0 from the very first row of the run, not a shaft that
+  -- might have a naturally-occurring pillar directly overhead partway
+  -- along.
   local function walkHome()
-    state.homingNoDig = true
-    local ok = true
-
-    if pos.x > 0 then
-      turnTo(2); ok = walkStraight(pos.x, "x")
-    elseif pos.x < 0 then
-      turnTo(0); ok = walkStraight(-pos.x, "x")
-    end
-
-    if ok and pos.z > 0 then
-      turnTo(3); ok = walkStraight(pos.z, "z")
-    elseif ok and pos.z < 0 then
-      turnTo(1); ok = walkStraight(-pos.z, "z")
-    end
+    local ok = walkHorizontal(0, 0, "home")
 
     if ok then
       while pos.y < 0 do
@@ -286,28 +334,18 @@ return function(state, cfg, logging)
     end
 
     turnTo(0)
-    state.homingNoDig = false
     return ok
   end
 
   -- Reverse trip: from (0,0,0)/heading 0 back out to a saved position --
   -- used after a station refuel to resume mining where it paused. Same
-  -- no-dig/stop-on-obstruction treatment as walkHome().
+  -- re-corrected horizontal walk as walkHome() (see walkHorizontal()
+  -- above) -- this is exactly the leg where the drift bug showed up in
+  -- practice: refuelAtStation() checks the landing spot is exact before
+  -- trusting the resume, so an uncorrected detour drift here silently
+  -- aborted the whole run instead of just missing a checkpoint.
   local function walkBackTo(targetX, targetY, targetZ, targetHeading)
-    state.homingNoDig = true
-    local ok = true
-
-    if targetX > pos.x then
-      turnTo(0); ok = walkStraight(targetX - pos.x, "x")
-    elseif targetX < pos.x then
-      turnTo(2); ok = walkStraight(pos.x - targetX, "x")
-    end
-
-    if ok and targetZ > pos.z then
-      turnTo(1); ok = walkStraight(targetZ - pos.z, "z")
-    elseif ok and targetZ < pos.z then
-      turnTo(3); ok = walkStraight(pos.z - targetZ, "z")
-    end
+    local ok = walkHorizontal(targetX, targetZ, "resume")
 
     if ok then
       while pos.y > targetY do
@@ -331,7 +369,6 @@ return function(state, cfg, logging)
     end
 
     turnTo(targetHeading)
-    state.homingNoDig = false
     return ok
   end
 

@@ -13,15 +13,6 @@ local state = {
   pos = { x = 0, y = 0, z = 0 },
   heading = 0,
 
-  -- True only while walking home/back (movement.lua). Ordinary terrain is
-  -- still dug through as normal (safeClear() only special-cased this to
-  -- refuse ALL digging while homing, which stranded the turtle on the
-  -- first un-dug block -- fixed). This flag now only suppresses
-  -- detouring: a home path needing a detour means `pos` itself has
-  -- drifted from reality (no GPS to check against), so stop and log
-  -- instead of routing around it.
-  homingNoDig = false,
-
   fatalFuel = false, -- true once mining halts for fuel; every loop stops
   haltReason = nil,  -- "low_fuel" (preemptive) or "no_fuel" (hard 0)
 
@@ -29,6 +20,14 @@ local state = {
   -- hook so a low-fuel forward()/down() can try refueling before halting,
   -- without movement.lua depending on fuel.lua directly.
   tryRefuelBeforeHalt = nil,
+
+  -- Set by detour.lua once constructed. movement.lua's home walk
+  -- (walkHome()/walkBackTo()) calls through this hook so a real obstacle
+  -- (SKIP_BLOCKS or stuck) blocking the straight-line path can be routed
+  -- around exactly like any other sideways step during mining, without
+  -- movement.lua depending on detour.lua directly (detour.lua already
+  -- depends on movement.lua, so the reverse import would be circular).
+  detourStepForward = nil,
 
   -- Current row/column, diagnostics only -- pos.x/y/z stay the only
   -- source of truth for movement/fuel decisions. -1/-1 = not mining right

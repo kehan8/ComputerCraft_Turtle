@@ -1,8 +1,11 @@
 -- detour.lua: routes around a pillar blocking a sideways step, bounded by
 -- cfg.DETOUR_MAX_WIDTH on each side -- never loops forever, and undoes
 -- its own steps on failure so pos always matches the turtle's real
--- position. Only used while actively mining -- the home walk (see
--- movement.lua) deliberately never detours.
+-- position. Used both while actively mining (bounded to the requested
+-- footprint) and by the home walk (movement.lua's walkHome()/
+-- walkBackTo(), via the state.detourStepForward hook below -- unbounded,
+-- since the way home may need to pass back through ground a mining-time
+-- detour left outside the footprint).
 
 return function(state, cfg, logging, movement)
   local pos = state.pos
@@ -188,11 +191,12 @@ return function(state, cfg, logging, movement)
   end
 
   -- Drop-in replacement for forward() at every sideways step while
-  -- mining: tries a detour on a real obstacle ("skip"/"stuck") before
-  -- reporting failure. Fuel reasons pass straight through untouched.
-  -- Re-checks fatalFuel after a failed detour so the caller reports the
-  -- real halt reason instead of a stale pre-detour one, in case fuel
-  -- went fatal mid-detour.
+  -- mining, AND for the horizontal legs of the home walk (movement.lua
+  -- calls this via state.detourStepForward, unbounded): tries a detour on
+  -- a real obstacle ("skip"/"stuck") before reporting failure. Fuel
+  -- reasons pass straight through untouched. Re-checks fatalFuel after a
+  -- failed detour so the caller reports the real halt reason instead of a
+  -- stale pre-detour one, in case fuel went fatal mid-detour.
   local function stepForward(bounds)
     local originalHeading = state.heading
     local moved, reason, name = forward()
@@ -208,6 +212,13 @@ return function(state, cfg, logging, movement)
     end
     return false, reason, name
   end
+
+  -- Registers the hook movement.lua's walkHome()/walkBackTo() call
+  -- through, so the home walk can detour around a real obstacle exactly
+  -- like every other sideways step during mining, without movement.lua
+  -- depending on this module directly (this module already depends on
+  -- movement.lua, so the reverse import would be circular).
+  state.detourStepForward = stepForward
 
   return {
     detourAround = detourAround,
