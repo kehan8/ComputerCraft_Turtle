@@ -140,6 +140,19 @@ return function(state, cfg, logging)
   end
 
   local function up()
+    -- Same soft low-fuel check as forward()/down() -- mineColumn() also
+    -- uses up() to dig the ascending half of a zigzag column, so this is
+    -- NOT always a move toward home; skipping the check let fuel run to
+    -- literal 0 on every other column instead of heading home early.
+    if not state.fatalFuel and not state.refuelStation.inProgress then
+      local fuel = turtle.getFuelLevel()
+      if fuel ~= "unlimited" and fuel <= distanceHome() + 1 + cfg.FUEL_SAFETY_MARGIN then
+        if not (state.tryRefuelBeforeHalt and state.tryRefuelBeforeHalt()) then
+          haltOnLowFuel()
+          return false, "low_fuel"
+        end
+      end
+    end
     local ok, reason, name = safeClear(turtle.inspectUp, turtle.digUp, turtle.detectUp)
     if not ok then
       if reason == "skip" then logging.recordSkip(pos.x, pos.y + 1, pos.z, name) end

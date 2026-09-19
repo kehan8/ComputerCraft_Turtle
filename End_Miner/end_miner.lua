@@ -82,6 +82,7 @@ local function mineColumn(height)
       break
     end
     moved = moved + 1
+    state.save() -- checkpoint every block -- a crash mid-column must not lose more than one block of real position
   end
 
   if moved < height and not state.fatalFuel then
@@ -91,6 +92,7 @@ local function mineColumn(height)
         logEvent(string.format("Could not undo partial column at x=%d y=%d z=%d -- leaving turtle here.", state.pos.x, state.pos.y, state.pos.z))
         break
       end
+      state.save() -- same per-block checkpoint as the dig loop above
     end
   end
 end
