@@ -4,7 +4,7 @@ local REPO_URL = "https://raw.githubusercontent.com/kehan8/ComputerCraft_Turtle/
 
 local FILES = {
     "end_miner.lua", "state.lua", "logging.lua", "movement.lua", "detour.lua", "fuel.lua",
-    "config.lua", "startup.lua", "update.lua", "update_full.lua", "uninstall.lua",
+    "config.lua", "rename.lua", "startup.lua", "update.lua", "update_full.lua", "uninstall.lua",
 }
 
 local function downloadFile(name)

@@ -2,7 +2,7 @@
 
 local FILES = {
     "end_miner.lua", "state.lua", "logging.lua", "movement.lua", "detour.lua", "fuel.lua",
-    "startup.lua", "update.lua", "update_full.lua", "install.lua",
+    "rename.lua", "startup.lua", "update.lua", "update_full.lua", "install.lua",
 }
 
 print("This will remove: " .. table.concat(FILES, ", "))
