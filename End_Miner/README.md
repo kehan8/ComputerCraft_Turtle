@@ -113,24 +113,38 @@ arguments.** Starting a mining job is always the explicit
 intentional, not a missing feature.
 
 If it gets stuck walking home (obstacle or empty fuel), it logs exactly
-where and stops -- clear the obstacle or refuel, then run `startup`
-again by hand to retry from that same spot. That message is also
-appended to `startup_home.log` (with a timestamp), not just printed --
-a reboot-triggered walk usually happens with nobody watching the
-turtle's screen, so the live `print()` output alone would otherwise be
-gone the moment it scrolls off. Check that file after a restart if the
-turtle didn't end up back home.
+where, the exact block name if one's in the way, and stops -- clear the
+obstacle or refuel, then run `startup` again by hand to retry from that
+same spot. That message is also appended to `startup_home.log` (with a
+timestamp), not just printed -- a reboot-triggered walk usually happens
+with nobody watching the turtle's screen, so the live `print()` output
+alone would otherwise be gone the moment it scrolls off. Check that file
+after a restart if the turtle didn't end up back home.
 
-**Homing never digs, at all -- not even ordinary blocks.** There is no
-GPS in this setup, so the saved position is only ever a best guess (a
-reboot, a tick-freeze, or a manual restart mid-run can all make it wrong).
+**`startup.lua`'s homing never digs ordinary terrain by default -- only
+`end_miner.lua`'s own live-run home walk does.** There is no GPS in this
+setup, so a saved position `startup.lua` reads from disk after a reboot is
+only ever a best guess (the reboot/tick-freeze itself is exactly the kind
+of event that can make it wrong, and nobody's there afterward to check).
 On real hardware, digging through "whatever's actually there" while that
 guess was wrong meant digging through the player's own chests and a fuel
-machine at the home base. Since then, both `end_miner.lua`'s own
-walk-home (used at the end of a run and during a station refuel trip) and
-`startup.lua` stop immediately at the first block in the way instead of
-clearing it -- a stuck turtle is recoverable by hand; a destroyed base is
-not.
+machine at the home base. `end_miner.lua`'s own walk-home (used at the end
+of a run and during a station refuel trip) is different: it always runs
+inside the same continuous, never-rebooted execution where the position
+is live-tracked, not read cold off disk, and any run that starts with a
+suspicious saved position already stopped for the confirmation described
+below -- so it's safe for it to dig ordinary terrain and detour around
+`SKIP_BLOCKS` obstacles same as normal mining. `startup.lua` can't tell
+whether it's trustworthy the same way, so by default it only detours
+around a `SKIP_BLOCKS` obstacle through space that's already open (never
+digs to make room) and stops on anything else. If you're certain the
+saved position is accurate -- e.g. you were standing right there when it
+ran dry and just refueled it, no reboot happened -- run `startup force`
+instead to let that one walk dig through ordinary terrain too, the same
+trust call `end_miner.lua`'s own prompt below asks for, just as an
+explicit flag instead of an Enter press, since `startup.lua` usually runs
+unattended. Either way: a stuck turtle is recoverable by hand; a destroyed
+base is not.
 
 **Manually retyping `end_miner <w> <h> <d>` on a turtle that's mid-run
 (after `Ctrl+T`, a crash, etc.) is risky** -- the script has no way to
