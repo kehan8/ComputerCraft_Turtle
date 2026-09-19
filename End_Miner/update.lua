@@ -1,6 +1,6 @@
 -- update.lua: redownloads the code files, leaves config.lua alone.
 
-local REPO_URL = "https://raw.githubusercontent.com/kehan8/ComputerCraft_Turtle/refs/heads/main/EndMiner/"
+local REPO_URL = "https://raw.githubusercontent.com/kehan8/ComputerCraft_Turtle/refs/heads/main/End_Miner/"
 
 local FILES = {
     "end_miner.lua", "state.lua", "logging.lua", "movement.lua", "detour.lua", "fuel.lua",
