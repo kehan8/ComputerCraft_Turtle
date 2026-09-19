@@ -1,6 +1,16 @@
 -- fuel.lua: inventory refuel, and the two-chest refuel station trip used
 -- when both the tank and inventory are empty. See README.md "Fuel & the
 -- refuel station" for the physical chest layout this depends on.
+--
+-- FIXED 2026-09-19: refuelAtStation() used to always "return true" at the
+-- end, even when walkBackTo() failed to land back on the exact paused
+-- spot. That meant a failed/short return from the station was reported
+-- to the caller (movement.lua's forward()/up()/down(), via
+-- tryRefuelBeforeHalt) as "fuel problem solved, keep going" -- so mining
+-- silently resumed from whatever wrong column the turtle actually ended
+-- up on, with no halt and no clear log line. This is the fix: verify the
+-- landing spot (same check the old single-file end_miner.lua always had)
+-- before claiming success.
 
 return function(state, cfg, logging, movement)
   local pos = state.pos
@@ -138,7 +148,9 @@ return function(state, cfg, logging, movement)
   -- Walk home, climb up to drop off inventory, climb down to refuel, and
   -- (if that left enough fuel for the trip back out) resume mining
   -- exactly where it paused. Returns false if the station had nothing
-  -- usable -- the turtle is left AT HOME rather than stranded in the field.
+  -- usable, OR if the walk back out didn't actually land on the paused
+  -- spot -- the turtle is left AT HOME/wherever it actually is rather
+  -- than the caller wrongly believing the fuel problem is solved.
   local function refuelAtStation()
     state.refuelStation.inProgress = true
 
@@ -201,14 +213,22 @@ return function(state, cfg, logging, movement)
     local backOk = movement.walkBackTo(savedX, savedY, savedZ, savedHeading)
     state.refuelStation.inProgress = false
     state.save() -- checkpoint right after resuming, don't wait for the next column
-    if backOk then
-      logging.logEvent(string.format("Refueled at the station (fuel now %s) -- resuming at x=%d y=%d z=%d.",
-        tostring(turtle.getFuelLevel()), savedX, savedY, savedZ))
-    else
+
+    -- THE FIX: walkBackTo() can fall short (blocked step, fuel dips
+    -- again) without throwing an error -- backOk alone isn't even
+    -- required to trust here, the position itself is checked too. Only
+    -- report success, and only let the caller believe fuel is handled,
+    -- if the turtle is actually back at the exact spot mining paused at.
+    if not backOk or pos.x ~= savedX or pos.y ~= savedY or pos.z ~= savedZ then
       logging.logEvent(string.format(
-        "Refueled at the station, but got stuck heading back out (now at x=%d y=%d z=%d, wanted x=%d y=%d z=%d) -- mining resumes from here instead.",
-        pos.x, pos.y, pos.z, savedX, savedY, savedZ))
+        "Could not walk back to the exact paused spot after refueling (wanted x=%d y=%d z=%d, at x=%d y=%d z=%d) -- stopping here instead of mining from the wrong column.",
+        savedX, savedY, savedZ, pos.x, pos.y, pos.z))
+      state.refuelStation.exhausted = true
+      return false
     end
+
+    logging.logEvent(string.format("Refueled at the station (fuel now %s) -- resuming at x=%d y=%d z=%d.",
+      tostring(turtle.getFuelLevel()), savedX, savedY, savedZ))
     return true
   end
 
