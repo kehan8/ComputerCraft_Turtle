@@ -13,9 +13,13 @@ local state = {
   pos = { x = 0, y = 0, z = 0 },
   heading = 0,
 
-  -- True only while walking home/back (movement.lua) -- forces every
-  -- move to stop and log on ANY obstruction instead of digging, since a
-  -- home path should already be open air.
+  -- True only while walking home/back (movement.lua). Ordinary terrain is
+  -- still dug through as normal (safeClear() only special-cased this to
+  -- refuse ALL digging while homing, which stranded the turtle on the
+  -- first un-dug block -- fixed). This flag now only suppresses
+  -- detouring: a home path needing a detour means `pos` itself has
+  -- drifted from reality (no GPS to check against), so stop and log
+  -- instead of routing around it.
   homingNoDig = false,
 
   fatalFuel = false, -- true once mining halts for fuel; every loop stops

@@ -41,12 +41,15 @@ return function(state, cfg, logging)
     if SKIP_BLOCKS[data.name] then
       return false, "skip", data.name
     end
-    -- While homing, refuse to dig ANYTHING, not just SKIP_BLOCKS -- see
-    -- state.homingNoDig. Stopping is always recoverable; digging through
-    -- a base on a bad position guess is not.
-    if state.homingNoDig then
-      return false, "blocked", data.name
-    end
+    -- NOTE: homing used to also refuse to dig ANYTHING here (see
+    -- state.homingNoDig), on the theory that a home path should already
+    -- be open air. In practice the mining pattern only connects columns
+    -- at y=0/y=-height, so a mid-depth home walk routinely needs to dig
+    -- through ordinary terrain -- exactly like normal mining always has.
+    -- The old monolithic end_miner.lua never distinguished homing from
+    -- mining here, and blocking it stranded the turtle on the first
+    -- un-dug block. Restored to match: SKIP_BLOCKS is still respected,
+    -- everything else gets dug through same as always.
 
     local attempts = 0
     while detectFn() and attempts < MAX_DIG_ATTEMPTS do
@@ -224,10 +227,11 @@ return function(state, cfg, logging)
     return nx < bounds.minX or nx > bounds.maxX or nz < bounds.minZ or nz > bounds.maxZ
   end
 
-  -- Used only while homing (state.homingNoDig true): plain forward(),
-  -- never a detour -- a home path needing a detour means `pos` itself
-  -- has drifted from reality (no GPS to check against), so stop and log
-  -- instead of digging through whatever's actually there.
+  -- Used only while homing (state.homingNoDig true): plain forward()
+  -- (which still digs ordinary terrain via safeClear(), same as normal
+  -- mining), never a detour -- a home path needing a detour means `pos`
+  -- itself has drifted from reality (no GPS to check against), so stop
+  -- and log instead of trying to route around it.
   local function walkStraight(count, axisLabel)
     for _ = 1, count do
       local moved, reason, name = forward()
