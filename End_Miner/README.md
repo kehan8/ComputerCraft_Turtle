@@ -29,9 +29,11 @@ missing a field (e.g. an old copy from before a setting existed),
 `end_miner.lua` falls back to the same defaults shown in `config.lua`
 itself, rather than crashing the run.
 
-`SKIP_BLOCKS`, retry limits, and the state/log file names are **not**
-in `config.lua` on purpose -- those are internal/safety details, not
-things a player tunes per run.
+`SKIP_BLOCKS` lives in `config.lua` too, but as a fixed safety list, not
+a tunable -- movement.lua/startup.lua each keep a hardcoded fallback copy
+for when the file is missing/corrupt. Retry limits and the state/log file
+names stay internal (not in `config.lua`) -- nobody needs to tune those
+per run.
 
 ## Code structure
 

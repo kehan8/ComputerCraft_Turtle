@@ -1,8 +1,5 @@
--- logging.lua: console + saved-log output. Keeps its own record of
--- skipped blocks, detours, and "run ended early" events in `state` so
--- saveSkipLog() can write a full summary at the end -- the only reliable
--- way to inspect a run when there's no live console capture, just a
--- screenshot of the saved file.
+-- logging.lua: console + saved-log output. Records skips/detours/events
+-- in `state` so saveSkipLog() can write a full end-of-run summary.
 
 return function(state, cfg)
   local LOG_FILE = "end_miner_skips.log"
@@ -18,17 +15,14 @@ return function(state, cfg)
     table.insert(state.runLog, msg)
   end
 
-  -- Takes the SKIPPED BLOCK's own position, not the turtle's, and stamps
-  -- the current row/col -- lets a repeated coordinate be told apart: the
-  -- same pillar hit on a different row (fine) vs. the same row/col logged
-  -- twice (almost certainly a rerun over the same ground).
+  -- Uses the block's position (not the turtle's) plus row/col, so a
+  -- repeat on a new row reads differently from a same-row rerun.
   local function recordSkip(bx, by, bz, blockName)
     table.insert(state.skipped, { x = bx, y = by, z = bz, block = blockName, row = state.currentRow, col = state.currentCol })
   end
 
-  -- Records the OUTCOME of a detour attempt (side, width, or a clean
-  -- failure) -- the only persisted evidence of whether the memory
-  -- shortcut actually fired.
+  -- Records a detour's outcome -- the only evidence of whether the
+  -- memory shortcut actually fired.
   local function recordDetour(bx, by, bz, outcome, width)
     table.insert(state.detours, { x = bx, y = by, z = bz, row = state.currentRow, col = state.currentCol, outcome = outcome, width = width })
   end
@@ -57,10 +51,8 @@ return function(state, cfg)
     end
   end
 
-  -- Writes a full run summary: requested dimensions, detour settings,
-  -- last row/col reached, final position, and every skip/detour/event.
-  -- lastRow/lastCol must be snapshotted by the caller BEFORE returnHome()
-  -- resets currentRow/currentCol to -1,-1.
+  -- Writes a full run summary. lastRow/lastCol must be snapshotted by
+  -- the caller before returnHome() resets them to -1,-1.
   local function saveSkipLog(width, height, depth, lastRow, lastCol)
     local f = fs.open(LOG_FILE, "w")
     if not f then

@@ -1,22 +1,9 @@
--- movement.lua: safe dig/move primitives. Every retry is bounded --
--- never an infinite loop. forward()/down() also check fuel before moving
--- and try to refuel (via state.tryRefuelBeforeHalt, wired up by fuel.lua)
--- before halting the run.
+-- movement.lua: safe dig/move primitives, retries always bounded.
+-- forward()/down() check fuel and try refueling before halting.
 
 return function(state, cfg, logging)
   local MAX_DIG_ATTEMPTS  = 8 -- give up retrying a block after this many tries
   local MAX_MOVE_ATTEMPTS = 8 -- give up retrying a blocked move after this many tries
-
-  -- Never mined -- checked via inspect() before dig().
-  local SKIP_BLOCKS = {
-    ["minecraft:obsidian"]         = true,
-    ["minecraft:crying_obsidian"]  = true,
-    ["minecraft:bedrock"]          = true,
-    ["minecraft:end_portal_frame"] = true,
-    ["minecraft:end_gateway"]      = true,
-    ["minecraft:end_portal"]       = true,
-    ["minecraft:dragon_egg"]       = true,
-  }
 
   local HEADING_DELTA = {
     [0] = { x = 1,  z = 0  },
@@ -38,16 +25,10 @@ return function(state, cfg, logging)
     if not isBlock then
       return true
     end
-    if SKIP_BLOCKS[data.name] then
+    if cfg.SKIP_BLOCKS[data.name] then
       return false, "skip", data.name
     end
-    -- No homing/mining distinction here on purpose. The mining pattern
-    -- only connects columns at y=0/y=-height, so a mid-depth home walk
-    -- routinely needs to dig through ordinary terrain -- exactly like
-    -- normal mining always has. The old monolithic end_miner.lua never
-    -- distinguished homing from mining here either: SKIP_BLOCKS is
-    -- respected (returned as "skip" for the caller to detour around),
-    -- everything else gets dug through same as always.
+    -- Same rule for mining or homing: SKIP_BLOCKS routed around, rest dug.
 
     local attempts = 0
     while detectFn() and attempts < MAX_DIG_ATTEMPTS do
@@ -61,7 +42,7 @@ return function(state, cfg, logging)
     if detectFn() then
       -- gravel/sand may reveal a skip-block underneath -- recheck
       local stillBlock, stillData = inspectFn()
-      if stillBlock and SKIP_BLOCKS[stillData.name] then
+      if stillBlock and cfg.SKIP_BLOCKS[stillData.name] then
         return false, "skip", stillData.name
       end
       return false, "stuck", (stillData and stillData.name) or "unknown"
@@ -141,10 +122,8 @@ return function(state, cfg, logging)
   end
 
   local function up()
-    -- Same soft low-fuel check as forward()/down() -- mineColumn() also
-    -- uses up() to dig the ascending half of a zigzag column, so this is
-    -- NOT always a move toward home; skipping the check let fuel run to
-    -- literal 0 on every other column instead of heading home early.
+    -- Same soft fuel check as forward()/down() -- up() isn't always
+    -- toward home (zigzag ascent), so it needs this check too.
     if not state.fatalFuel and not state.refuelStation.inProgress then
       local fuel = turtle.getFuelLevel()
       if fuel ~= "unlimited" and fuel <= distanceHome() + 1 + cfg.FUEL_SAFETY_MARGIN then
@@ -169,11 +148,8 @@ return function(state, cfg, logging)
   end
 
   local function down()
-    -- Skips the soft fuel-threshold check (but never the hard fuel==0
-    -- check in tryMove()) while a station trip is already in progress --
-    -- otherwise every step of that trip re-sees low fuel, tries to start
-    -- a second nested trip, gets correctly refused, and halts the run one
-    -- block from the fuel chest that would have fixed everything.
+    -- Skips the soft fuel check (never the hard fuel==0 one) mid-station-
+    -- trip -- otherwise every step re-triggers a nested trip and halts early.
     if not state.fatalFuel and not state.refuelStation.inProgress then
       local fuel = turtle.getFuelLevel()
       if fuel ~= "unlimited" and fuel <= distanceHome() + 1 + cfg.FUEL_SAFETY_MARGIN then
@@ -214,10 +190,8 @@ return function(state, cfg, logging)
     end
   end
 
-  -- Pure check, no movement: would one step in the CURRENT heading leave
-  -- the requested footprint? `bounds` is { minX, maxX, minZ, maxZ } or
-  -- nil (no limit, used by the home walk). Lets a detour refuse a step
-  -- before taking it instead of undoing it afterward.
+  -- Pure check: would one step leave the footprint (bounds =
+  -- {minX,maxX,minZ,maxZ}, nil = no limit)? Lets a detour refuse early.
   local function stepWouldLeaveFootprint(bounds)
     if not bounds then return false end
     local d = HEADING_DELTA[state.heading]
@@ -225,18 +199,9 @@ return function(state, cfg, logging)
     return nx < bounds.minX or nx > bounds.maxX or nz < bounds.minZ or nz > bounds.maxZ
   end
 
-  -- Used for the horizontal legs of the home walk. Routes through
-  -- state.detourStepForward (== detour.lua's stepForward, wired up once
-  -- detour.lua is constructed -- same hook pattern as
-  -- state.tryRefuelBeforeHalt above) so a real obstacle (SKIP_BLOCKS or
-  -- "stuck") blocking the straight-line path home gets swung around
-  -- exactly like any other sideways step during mining, instead of just
-  -- halting on the first one. No bounds passed (unbounded detour) -- the
-  -- home walk must stay free to pass back through a position a
-  -- mining-time detour deliberately left outside the requested footprint
-  -- earlier in the run. Falls back to plain forward() only if detour.lua
-  -- hasn't registered the hook yet (shouldn't happen in normal startup
-  -- order, but keeps this safe rather than erroring).
+  -- Horizontal leg of the home walk. Routes through detour.lua's hook
+  -- (unbounded, unlike mining) so obstacles get swung around, not halted
+  -- on. Falls back to plain forward() if that hook isn't registered.
   local function walkStraight(count, axisLabel)
     local step = state.detourStepForward or forward
     for _ = 1, count do
@@ -250,18 +215,8 @@ return function(state, cfg, logging)
     return true
   end
 
-  -- Horizontal (x, then z) leg of a home/resume walk, re-corrected in
-  -- rounds. A detour taken on the X leg only ever side-steps along Z, and
-  -- the Z leg that follows recomputes its step count from wherever Z
-  -- actually ended up -- so that drift self-corrects for free. But a
-  -- detour taken on the Z leg side-steps along X (detour.lua's
-  -- tryDetourSide deliberately never undoes that side-step -- the turtle
-  -- is left wherever forward() actually confirmed it could go), and
-  -- nothing came after the Z leg to notice or fix it. A single X-then-Z
-  -- pass can therefore land off-target by exactly the width of whatever
-  -- got detoured on the Z leg. Loop X->Z->X... like mineArea's
-  -- correctPosition() does for mining columns, with the same
-  -- seen-position cycle check, so a pillar corner can't loop forever.
+  -- x then z, re-corrected in rounds (a z-leg detour drifts x with
+  -- nothing after to fix it). Cycle check so a corner can't loop forever.
   local MAX_HOME_CORRECTION_ROUNDS = 6
 
   local function walkHorizontal(targetX, targetZ, label)
@@ -303,12 +258,8 @@ return function(state, cfg, logging)
     return false
   end
 
-  -- Walks straight back to (0,0,0)/heading 0. Horizontal first (see
-  -- walkHorizontal() above for why that's a re-corrected loop, not a
-  -- single X-then-Z pass), vertical last -- through the guaranteed-clear
-  -- column at x=0,z=0 from the very first row of the run, not a shaft that
-  -- might have a naturally-occurring pillar directly overhead partway
-  -- along.
+  -- Walks back to (0,0,0)/heading 0: horizontal first, then vertical
+  -- through the guaranteed-clear x=0,z=0 column.
   local function walkHome()
     local ok = walkHorizontal(0, 0, "home")
 
@@ -337,13 +288,8 @@ return function(state, cfg, logging)
     return ok
   end
 
-  -- Reverse trip: from (0,0,0)/heading 0 back out to a saved position --
-  -- used after a station refuel to resume mining where it paused. Same
-  -- re-corrected horizontal walk as walkHome() (see walkHorizontal()
-  -- above) -- this is exactly the leg where the drift bug showed up in
-  -- practice: refuelAtStation() checks the landing spot is exact before
-  -- trusting the resume, so an uncorrected detour drift here silently
-  -- aborted the whole run instead of just missing a checkpoint.
+  -- Reverse trip: (0,0,0) back to a saved position, resuming mining
+  -- after a station refuel. Same re-corrected walk as walkHorizontal().
   local function walkBackTo(targetX, targetY, targetZ, targetHeading)
     local ok = walkHorizontal(targetX, targetZ, "resume")
 

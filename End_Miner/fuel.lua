@@ -1,16 +1,5 @@
--- fuel.lua: inventory refuel, and the two-chest refuel station trip used
--- when both the tank and inventory are empty. See README.md "Fuel & the
--- refuel station" for the physical chest layout this depends on.
---
--- FIXED 2026-09-19: refuelAtStation() used to always "return true" at the
--- end, even when walkBackTo() failed to land back on the exact paused
--- spot. That meant a failed/short return from the station was reported
--- to the caller (movement.lua's forward()/up()/down(), via
--- tryRefuelBeforeHalt) as "fuel problem solved, keep going" -- so mining
--- silently resumed from whatever wrong column the turtle actually ended
--- up on, with no halt and no clear log line. This is the fix: verify the
--- landing spot (same check the old single-file end_miner.lua always had)
--- before claiming success.
+-- fuel.lua: inventory refuel, plus the two-chest station trip when both
+-- tank and inventory are empty. Chest layout: README.md.
 
 return function(state, cfg, logging, movement)
   local pos = state.pos
@@ -42,11 +31,8 @@ return function(state, cfg, logging, movement)
     return true
   end
 
-  -- Drops inventory into the chest in front (the station's drop-off
-  -- chest), keeping up to cfg.FUEL_RESERVE_ITEMS fuel items aboard as
-  -- reserve so refuelIfNeeded() can burn one mid-field later. Reports if
-  -- the chest couldn't take everything -- turtle.drop() fails silently
-  -- (no error) when the target chest is full.
+  -- Drops inventory into the chest in front, keeping up to
+  -- FUEL_RESERVE_ITEMS fuel items as reserve. Reports if the chest is full.
   local function dropOffAtStation()
     local reserved = 0
     for slot = 1, 16 do
@@ -79,12 +65,9 @@ return function(state, cfg, logging, movement)
     end
   end
 
-  -- Sucks items from the chest in front (the station's fuel chest) and
-  -- burns whatever's usable. Burns first on every iteration -- so fuel
-  -- gets a real chance to rise before the reserve-count check reads it --
-  -- then stops sucking once fuel clears the threshold AND at least
-  -- FUEL_RESERVE_ITEMS usable items are aboard. Bounded to 16 iterations.
-  -- Returns true if at least one item was turned into fuel.
+  -- Sucks from the chest in front, burning whatever's usable. Stops once
+  -- fuel clears the threshold AND FUEL_RESERVE_ITEMS items are aboard.
+  -- Returns true if anything got burned.
   local function refuelFromChestInFront()
     local gotAny = false
 
@@ -145,18 +128,14 @@ return function(state, cfg, logging, movement)
     return gotAny
   end
 
-  -- Walk home, climb up to drop off inventory, climb down to refuel, and
-  -- (if that left enough fuel for the trip back out) resume mining
-  -- exactly where it paused. Returns false if the station had nothing
-  -- usable, OR if the walk back out didn't actually land on the paused
-  -- spot -- the turtle is left AT HOME/wherever it actually is rather
-  -- than the caller wrongly believing the fuel problem is solved.
+  -- Walk home, drop off, refuel, then resume where mining paused.
+  -- Returns false if the station had nothing, or the walk back missed
+  -- the paused spot -- never lets the caller wrongly assume it's fixed.
   local function refuelAtStation()
     state.refuelStation.inProgress = true
 
-    -- Captured BEFORE walkHome() changes pos -- also exactly the fuel
-    -- cost of the walk back out afterward, since the station sits at the
-    -- same (0,0,0) walkHome() always targets.
+    -- Captured before walkHome() changes pos -- also the fuel cost of
+    -- the trip back out, since the station is always at (0,0,0).
     local tripDistance = movement.distanceHome()
     local savedX, savedY, savedZ, savedHeading = pos.x, pos.y, pos.z, state.heading
 
@@ -166,11 +145,8 @@ return function(state, cfg, logging, movement)
 
     movement.walkHome()
 
-    -- walkHome() usually lands exactly on (0,0,0), but not guaranteed
-    -- (e.g. the very first column got cut short by a fuel halt). Every
-    -- chest interaction below hard-assumes (0,0,0) -- check once, here,
-    -- so a wrong assumption becomes one clear log line instead of
-    -- confusing "no peripheral access" symptoms further down.
+    -- walkHome() usually lands exactly on (0,0,0) but isn't guaranteed --
+    -- check once here so a miss is one clear log line, not confusing errors below.
     if pos.x ~= 0 or pos.y ~= 0 or pos.z ~= 0 then
       logging.logEvent(string.format(
         "Could not fully return to the station (stuck at x=%d y=%d z=%d, not 0,0,0) -- treating the station as unreachable this trip.",
@@ -214,11 +190,8 @@ return function(state, cfg, logging, movement)
     state.refuelStation.inProgress = false
     state.save() -- checkpoint right after resuming, don't wait for the next column
 
-    -- THE FIX: walkBackTo() can fall short (blocked step, fuel dips
-    -- again) without throwing an error -- backOk alone isn't even
-    -- required to trust here, the position itself is checked too. Only
-    -- report success, and only let the caller believe fuel is handled,
-    -- if the turtle is actually back at the exact spot mining paused at.
+    -- walkBackTo() can fall short without erroring -- check position too,
+    -- not just backOk, before reporting the fuel problem as solved.
     if not backOk or pos.x ~= savedX or pos.y ~= savedY or pos.z ~= savedZ then
       logging.logEvent(string.format(
         "Could not walk back to the exact paused spot after refueling (wanted x=%d y=%d z=%d, at x=%d y=%d z=%d) -- stopping here instead of mining from the wrong column.",
@@ -232,9 +205,8 @@ return function(state, cfg, logging, movement)
     return true
   end
 
-  -- Tries the cheap inventory refuel first, then escalates to a full
-  -- station trip if that's not enough -- only if the station is enabled,
-  -- not already mid-trip, and hasn't already been confirmed empty.
+  -- Tries the cheap inventory refuel first, escalates to a station trip
+  -- if enabled, not already mid-trip, and not already confirmed empty.
   local function tryRefuelBeforeHalt()
     refuelIfNeeded()
     local fuel = turtle.getFuelLevel()
@@ -249,8 +221,7 @@ return function(state, cfg, logging, movement)
     return false
   end
 
-  -- Registers the hook movement.lua's forward()/down() call through, so
-  -- a low-fuel move can try refueling before halting without movement.lua
+  -- Hook so movement.lua can try refueling before halting, without
   -- depending on this module directly.
   state.tryRefuelBeforeHalt = tryRefuelBeforeHalt
 

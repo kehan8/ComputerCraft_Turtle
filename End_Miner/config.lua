@@ -1,9 +1,19 @@
--- config.lua: player-tunable settings for end_miner.lua.
--- Missing/corrupt config.lua is not fatal -- end_miner.lua falls back to
--- these same defaults per field. Internal/safety constants (SKIP_BLOCKS,
--- retry limits, file names) stay in end_miner.lua, not here.
+-- config.lua: player-tunable settings. Missing/corrupt file is not
+-- fatal -- callers fall back to hardcoded defaults per field.
 
 return {
+
+  -- Blocks never dug. Add new ones here ONLY -- end_miner.lua/startup.lua
+  -- keep emergency fallback copies that are NOT meant to be edited.
+  SKIP_BLOCKS = {
+    ["minecraft:obsidian"]         = true,
+    ["minecraft:crying_obsidian"]  = true,
+    ["minecraft:bedrock"]          = true,
+    ["minecraft:end_portal_frame"] = true,
+    ["minecraft:end_gateway"]      = true,
+    ["minecraft:end_portal"]       = true,
+    ["minecraft:dragon_egg"]       = true,
+  },
 
   -- Refuel when fuel drops below this.
   FUEL_THRESHOLD = 200,

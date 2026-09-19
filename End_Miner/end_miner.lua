@@ -1,31 +1,31 @@
 -- End Area Miner (CC:Tweaked)
--- Mines a width x height x depth volume (Minecraft's own X, Y, Z order) in
--- the End: width blocks wide, height blocks down, depth rows deep. Skips
--- obsidian/bedrock/portal blocks via inspect() before dig(), and detours
--- around anything else blocking a sideways step (bounded width) instead of
--- giving up outright. Starts at the top corner facing the "width"
--- direction, snakes width x depth, digging each column in one vertical
--- direction only (zigzag: down, then next column up, ...). Returns home +
--- facing at the end.
+-- Mines width x height x depth in the End, zigzag column by column.
+-- Skips SKIP_BLOCKS, detours around other obstacles, returns home after.
 --
 -- USAGE: end_miner <width> <height> <depth>
---
--- Split into state.lua/logging.lua/movement.lua/detour.lua/fuel.lua --
--- this file is just the mining pattern and the run's entry point.
--- Tunable settings live in config.lua. Full history/rationale for the
--- safety fixes below is in PROGRESS.md, indexed by round.
+-- Settings: config.lua. Full history: PROGRESS.md.
 
 local configOk, rawConfig = pcall(dofile, "config.lua")
 if not configOk or type(rawConfig) ~= "table" then
   rawConfig = {}
 end
 
--- Normalized, defaulted config -- shared by reference with every module
--- below, so main()'s DETOUR_MAX_WIDTH override (further down) is visible
--- everywhere without re-passing it around. Booleans use an explicit
--- `== nil` check, not `or default` -- `or` would silently override a
--- deliberately-set `false` with the default.
+-- Emergency fallback if config.lua fails to load. Add new blocks in
+-- config.lua, not here.
+local DEFAULT_SKIP_BLOCKS = {
+  ["minecraft:obsidian"]         = true,
+  ["minecraft:crying_obsidian"]  = true,
+  ["minecraft:bedrock"]          = true,
+  ["minecraft:end_portal_frame"] = true,
+  ["minecraft:end_gateway"]      = true,
+  ["minecraft:end_portal"]       = true,
+  ["minecraft:dragon_egg"]       = true,
+}
+
+-- Shared by reference across modules. Booleans use `== nil`, not `or`,
+-- so an explicit `false` isn't silently overridden by the default.
 local cfg = {
+  SKIP_BLOCKS         = rawConfig.SKIP_BLOCKS or DEFAULT_SKIP_BLOCKS,
   FUEL_THRESHOLD      = rawConfig.FUEL_THRESHOLD or 200,
   FUEL_SAFETY_MARGIN  = rawConfig.FUEL_SAFETY_MARGIN or 20,
   FUEL_RESERVE_ITEMS  = rawConfig.FUEL_RESERVE_ITEMS or 3,
@@ -56,12 +56,8 @@ local stepForward = detour.stepForward
 -- Mining pattern
 ------------------------------------------------------------
 
--- Digs "height" blocks in ONE direction only (down if at the top, up if
--- at the bottom), leaving the turtle there -- halves vertical travel vs.
--- always going down then back up. Always starts AND ends at pos.y == 0
--- or pos.y == -height; a partial column (stopped by an obstacle) is
--- undone so later code can always assume one of those two resting
--- heights.
+-- Digs one direction only (zigzag, halves vertical travel). A partial
+-- column (obstacle) is undone so pos.y always ends at 0 or -height.
 local function mineColumn(height)
   local goingDown = (state.pos.y == 0)
   local mover   = goingDown and down or up
@@ -97,12 +93,8 @@ local function mineColumn(height)
   end
 end
 
--- correctZ/correctX/correctPosition keep the turtle on its canonical
--- (x,z) for the current row/column -- a detour can leave real drift on
--- either axis, and that drift silently compounds row to row if left
--- unchecked. Bounded by MAX_CORRECTION_ROUNDS with cycle detection, since
--- a pillar corner can make Z-then-X correction oscillate between the same
--- two positions forever otherwise.
+-- Keeps the turtle on its canonical (x,z), undoing detour drift.
+-- Bounded with cycle detection so a pillar corner can't loop forever.
 local MAX_CORRECTION_ROUNDS = 4
 
 local function correctZ(targetZ, row, bounds)
@@ -161,11 +153,8 @@ local function correctX(targetX, row, bounds)
   return true
 end
 
--- Corrects Z, then X, then re-checks both, looping until both axes match
--- target or MAX_CORRECTION_ROUNDS is hit. Tracks every (x,z) seen at the
--- end of a round -- landing on a repeat is conclusive proof of a cycle
--- (common at a pillar corner), so it stops immediately instead of burning
--- the remaining rounds repeating it.
+-- Corrects Z then X, looping until both match or rounds run out.
+-- Stops early if a position repeats (cycle = stuck at a corner).
 local function correctPosition(targetX, targetZ, row, mineHeading, bounds)
   local seenPositions = { [state.pos.x .. ":" .. state.pos.z] = true }
   local cycleDetected = false
@@ -202,10 +191,8 @@ local function correctPosition(targetX, targetZ, row, mineHeading, bounds)
   turnTo(mineHeading)
 end
 
--- Mines one row, column by column. Verifies `pos` is actually at each
--- column's canonical (x,z) before digging -- if an earlier correction
--- gave up mid-row, drift must never silently dig the wrong column while
--- leaving the intended one untouched with no trace in the log.
+-- Mines one row, column by column. Verifies pos matches each column's
+-- canonical (x,z) first, so drift never silently mines the wrong spot.
 local function mineRow(width, height, bounds)
   local mineHeading = state.heading
   local targetZ = state.currentRow - 1
@@ -244,10 +231,8 @@ local function mineRow(width, height, bounds)
   end
 end
 
--- Walks pos back onto the row's canonical start cell before mining begins
--- -- never trusts wherever the previous row's column detours happened to
--- leave the turtle (a detour deliberately never re-centers itself
--- afterward, see tryDetourSide() in detour.lua).
+-- Walks back onto the row's start cell -- never trusts wherever the
+-- previous row's detours left the turtle.
 local function goToRowStart(row, width, bounds)
   local mineHeading = state.heading
   local targetZ = row - 1
@@ -298,10 +283,8 @@ local function mineArea(width, height, depth)
   end
 end
 
--- Final walk home. Also marks "no longer inside a mining pass" so a skip
--- logged from here isn't mistaken for a mining-time skip in the saved
--- log. A mid-run refuelAtStation() trip deliberately does NOT do this --
--- it's not done mining, just pausing.
+-- Final walk home. Marks row/col -1 so skips here aren't logged as
+-- mining skips (unlike a mid-run refuel trip, which stays mining).
 local function returnHome()
   state.currentRow, state.currentCol = -1, -1
   movement.walkHome()
@@ -317,9 +300,8 @@ local function main(...)
   local height = tonumber(args[2]) or 5
   local depth  = tonumber(args[3]) or 16
 
-  -- Negative/zero/fractional dimensions make the mining loops run zero
-  -- times silently (Lua's `for` does this with no error) -- fail loud
-  -- instead of looking like a successful "area fully clear" run.
+  -- Bad dimensions make Lua's `for` loops silently run zero times --
+  -- fail loud instead of looking like a successful empty run.
   if width < 1 or height < 1 or depth < 1
       or width ~= math.floor(width) or height ~= math.floor(height) or depth ~= math.floor(depth) then
     log(string.format(
@@ -328,11 +310,8 @@ local function main(...)
     return
   end
 
-  -- No GPS -- this run always assumes it's starting at (0,0,0), with no
-  -- way to verify the turtle is actually on its start pad. A leftover
-  -- non-home saved position is the one signal available that an earlier
-  -- run didn't finish -- surface it and require confirmation before
-  -- silently treating "here" as the new home.
+  -- No GPS -- always assumes it starts at (0,0,0). A leftover non-home
+  -- saved position is the only sign of an unfinished run -- confirm first.
   local saved = state.readSaved()
   if saved and (saved.x ~= 0 or saved.y ~= 0 or saved.z ~= 0) then
     log(string.format(
